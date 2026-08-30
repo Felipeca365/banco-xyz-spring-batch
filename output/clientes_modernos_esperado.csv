@@ -1,0 +1,5 @@
+customer_id;full_name;birth_date;debt_amount;email;risk_segment
+CLI-0001;Ana Perez;1992-04-01;15000;ana.perez@correo.cl;MEDIO
+CLI-0002;Luis Gonzalez;1988-11-23;0;luis.gonzalez@correo.cl;BAJO
+CLI-0003;María José Rojas;2000-02-07;9990;sin-correo@example.invalid;MEDIO
+CLI-0004;Pedro Soto;1975-12-31;120000;pedro.soto@correo.cl;ALTO

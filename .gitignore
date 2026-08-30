@@ -1,0 +1,11 @@
+target/
+output/*
+!output/clientes_modernos_esperado.csv
+*.log
+.idea/
+.vscode/
+.classpath
+.project
+.settings/
+.DS_Store
+output/clientes_migrados.csv

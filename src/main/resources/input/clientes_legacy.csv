@@ -1,0 +1,5 @@
+id_legacy;nombre;apellido;fecha_nacimiento;deuda_pesos;correo
+0001;  ana ; perez ;01-04-1992; 15000; ANA.PEREZ@CORREO.CL
+0002;LUIS;GONZALEZ;23-11-1988;0; luis.gonzalez@correo.cl
+0003;maría josé;rojas;07-02-2000; 9990; 
+0004;Pedro;Soto;31-12-1975; 120000;pedro.soto@correo.cl
