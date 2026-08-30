@@ -49,4 +49,4 @@ public class EstadoCuentaAnualPartitioner implements Partitioner {
 
         return particiones;
     }
-}
+} 
