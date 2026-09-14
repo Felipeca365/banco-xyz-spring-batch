@@ -1,188 +1,130 @@
-# Banco XYZ — Modernización de Procesos Legacy con Spring Batch
+# Banco XYZ - Sistema Backend for Frontend (BFF)
 
-Proyecto desarrollado para la asignatura **Desarrollo Backend III (PBY2203)**, DUOC UC, como parte de la actividad sumativa "Optimizando procesos batch para mejorar la resiliencia de procesos".
+**Autor:** Felipe Cabrera
+**Asignatura:** Desarrollo Backend III (PBY2203) - DUOC UC
+**Actividad:** Exp2 - Semana 5 - Implementando el patrón arquitectónico Backend for Frontend (BFF)
 
-## 1. Objetivo del proyecto
+## Objetivo del proyecto
 
-Modernizar tres procesos batch del sistema legacy del **Banco XYZ**, originalmente ejecutados sobre archivos planos exportados desde un sistema COBOL, migrándolos a **Spring Batch** sobre una base de datos relacional (MySQL). El proyecto implementa:
+Este proyecto implementa el patrón arquitectónico **Backend for Frontend (BFF)** sobre el sistema bancario Banco XYZ, con el fin de optimizar la comunicación entre distintos tipos de clientes (web, móvil y cajero automático) y los datos del banco, generados previamente mediante un proceso batch con Spring Batch (Jobs de transacciones, intereses y estados de cuenta anuales).
 
-- Lectura, validación y transformación de datos provenientes de archivos CSV con distintos niveles de calidad de datos (formatos inconsistentes, valores nulos, duplicados, tipos no documentados).
-- Persistencia de los resultados en MySQL, conservando siempre el registro de anomalías detectadas (criterio de auditoría bancaria: nunca se descarta un dato sospechoso, se marca y se guarda).
-- Tolerancia a fallos mediante políticas de reintento y omisión personalizadas.
-- Dos estrategias distintas de escalamiento y procesamiento paralelo: **multi-threading** (Jobs 1 y 2) y **particionamiento** (Job 3).
+Cada canal cuenta con su propio backend independiente, con respuestas personalizadas según sus necesidades, y con un mecanismo de autenticación propio y diferenciado.
 
-## 2. Estructura del proyecto
+## Estrategia de implementación elegida
 
-```
-src/main/java/cl/duoc/backendiii/semana1/
-├── BatchConfiguration.java          # Configuración central: todos los @Bean (Jobs, Steps, Readers, Writers)
-│
-├── Job 1 — Transacciones diarias
-│   ├── Transaccion.java
-│   ├── TransaccionProcesada.java
-│   ├── TransaccionProcessor.java
-│   ├── TransaccionSkipPolicy.java
-│   ├── TransaccionSkipListener.java
-│   └── TransaccionJobCompletionListener.java
-│
-├── Job 2 — Intereses mensuales
-│   ├── CuentaInteres.java
-│   ├── CuentaInteresProcesada.java
-│   ├── CuentaInteresProcessor.java
-│   ├── CuentaInteresSkipPolicy.java
-│   ├── CuentaInteresSkipListener.java
-│   └── CuentaInteresJobCompletionListener.java
-│
-└── Job 3 — Estados de cuenta anuales
-    ├── TransaccionAnual.java
-    ├── TransaccionAnualProcesada.java
-    ├── TransaccionAnualProcessor.java
-    ├── EstadoCuentaAnualPartitioner.java
-    └── EstadoCuentaAnualJobCompletionListener.java
+Se optó por la estrategia de **Backends independientes por cada tipo de cliente**, en lugar de endpoints personalizados sobre un único backend o delegación por microservicios. Esta decisión se sustenta en:
 
-src/main/resources/
-├── application.properties
-└── input/
-    ├── transacciones.csv
-    ├── intereses.csv
-    └── cuentas_anuales.csv
-```
+- La necesidad de reglas de negocio y seguridad completamente distintas por canal (Basic Auth para Web, JWT para Móvil, token propio para Cajero).
+- La naturaleza física y crítica del canal Cajero, que exige aislamiento de seguridad respecto a los demás canales.
+- El carácter académico del ejercicio, que buscaba demostrar el patrón BFF de forma explícita y completa.
 
-## 3. Los tres Jobs
+### Relación con el ejemplo de refactorización de monolito de la guía
 
-### Job 1 — Reporte de Transacciones Diarias
+La guía de la semana 5 ilustra el proceso de refactorización mediante un caso genérico: un método `getData(clientType)` que decide su comportamiento con una sentencia `if` según el tipo de cliente, refactorizado en dos métodos independientes bajo la estrategia de endpoints personalizados.
 
-Lee `transacciones.csv`, detecta anomalías de negocio y las persiste en la tabla `transacciones`.
+Este proyecto aplica el mismo principio de fondo -eliminar la bifurcación condicional por tipo de cliente- pero llevándolo un paso más allá: en lugar de separar únicamente las rutas dentro de una misma aplicación, se optó desde el diseño inicial por la estrategia de backends independientes. Cada canal (`bff-web`, `bff-movil`, `bff-cajero`) es un módulo Maven y un proceso Spring Boot completamente separado, con su propio punto de entrada, su propio mecanismo de autenticación y su propio ciclo de despliegue. En ningún punto del código existe una condición del tipo `if (clientType.equals("web"))`: la decisión de qué lógica ejecutar no ocurre en tiempo de ejecución dentro de un método compartido, sino en tiempo de diseño, al enrutar cada cliente directamente hacia su propio servicio.
 
-**Reglas de negocio (criterio propio, documentado):**
-- Monto nulo, negativo o en cero → anomalía.
-- Posible duplicado (misma fecha + monto + tipo) → anomalía.
-- Errores de formato (fecha inválida, texto no numérico) → manejados con `SkipPolicy` (máximo 5 omisiones por ejecución).
+## Arquitectura del proyecto
 
-**Escalamiento:** multi-threading, 3 hilos fijos (`corePoolSize=3, maxPoolSize=3`), con `SynchronizedItemStreamReader` para lectura concurrente segura sobre un único reader compartido.
+Proyecto Maven multi-módulo:
 
-### Job 2 — Cálculo de Intereses Mensuales
+desarrollo_Backend3_s1-main/
+|-- pom.xml (POM padre agregador)
+|-- batch-core/ (Jobs de Spring Batch: transacciones, intereses, estados anuales)
+|-- common-data/ (Entidades JPA y repositorios compartidos por los 3 BFF)
+|-- bff-web/ (BFF para clientes web)
+|-- bff-movil/ (BFF para clientes moviles)
+|-- bff-cajero/ (BFF para cajeros automaticos)
+|-- keystore.p12 (Certificado autofirmado compartido para HTTPS)
+`-- evidencias/ (Capturas de ejecución de cada API)
 
-Lee `intereses.csv`, aplica una tasa de interés mensual según el tipo de cuenta y persiste el resultado en `cuentas_intereses`.
 
-**Tasas aplicadas (criterio propio):**
-- Ahorro: 0.5% mensual
-- Préstamo: 1.5% mensual
-- Hipoteca: 0.8% mensual
-- Fórmula: `saldo_final = saldo + (saldo × tasa)`, redondeo HALF_UP a 2 decimales.
+## Detalle de cada BFF
 
-**Reglas de negocio:** saldo nulo, edad nula, tipo de cuenta inválido, edad fuera del rango 18-100 (inclusivo), posible duplicado → anomalía.
+### BFF Web (puerto 8081)
 
-**Escalamiento:** igual estrategia que Job 1 (multi-threading, 3 hilos, reader sincronizado).
+- Expone los datos completos de cada entidad (transacciones, cuentas, estados anuales, detalle anual).
+- Autenticación: **HTTP Basic Auth** (usuario y clave fijos).
+- Endpoints principales:
+  - `GET /api/web/transacciones`
+  - `GET /api/web/cuentas`
+  - `GET /api/web/estados-anuales`
+  - `GET /api/web/transacciones-anuales`
 
-### Job 3 — Generación de Estados de Cuenta Anuales
+### BFF Movil (puerto 8082)
 
-A diferencia de los Jobs 1 y 2 (procesamiento fila a fila), este Job requiere **agregación**: compilar todas las transacciones del año de cada cuenta en un solo estado de cuenta resumen. Se implementó en **dos Steps**:
+- Expone DTOs livianos, con solo los campos esenciales, reduciendo el tamaño de las respuestas entre un 60% y un 70% respecto al BFF Web.
+- Autenticación: **JWT (JSON Web Token)**, mediante login previo.
+- Endpoints principales:
+  - `POST /api/movil/auth/login` (obtiene el token)
+  - `GET /api/movil/transacciones`
+  - `GET /api/movil/cuentas`
+  - `GET /api/movil/estados-anuales`
 
-1. **`particionarTransaccionAnualStep`** (particionado en paralelo): lee `cuentas_anuales.csv` (1000 registros), normaliza y valida cada transacción, y escribe el detalle en `transacciones_anuales_detalle`.
-2. **`generarEstadoCuentaAnualStep`** (tasklet secuencial): una vez que el Step anterior termina, ejecuta una agregación SQL (`GROUP BY cuenta_id`) y genera el resumen final en `estados_cuenta_anuales`.
+### BFF Cajero (puerto 8083)
 
-**Reglas de negocio (criterio propio, dato de origen mucho más "sucio" que semana 1/2):**
-- Fechas en 4 formatos distintos mezclados en el mismo archivo (`yyyy-MM-dd`, `yyyy/MM/dd`, `dd-MM-yyyy`, `dd/MM/yyyy`) → se intenta parsear en ese orden; si ninguno calza, anomalía.
-- Tipo de transacción `depósito` (con tilde) → se normaliza a `deposito`, no es anomalía.
-- Tipo `pago` (no contemplado en el enunciado original) → se decidió tratarlo como tipo válido, afecta el saldo igual que un retiro o compra.
-- Monto vacío/nulo → anomalía.
-- Depósito con monto negativo → anomalía (inconsistencia de negocio).
-- Tipo de transacción no reconocido (fuera de depósito/retiro/compra/pago) → anomalía.
-- Posible duplicado (misma cuenta + fecha + tipo + monto) → anomalía.
-- Las anomalías se excluyen del cálculo del saldo neto, pero se cuentan en `cantidad_anomalias` para fines de auditoría.
+- Expone únicamente los datos mínimos necesarios para operar en un cajero físico (saldo y resumen anual).
+- Autenticación: **token fijo propio**, enviado en el header `X-Cajero-Token`.
+- Endpoints principales:
+  - `GET /api/cajero/saldo/{cuentaId}`
+  - `GET /api/cajero/estado-anual/{cuentaId}`
 
-**Escalamiento:** **particionamiento** (`Partitioner` + `TaskExecutorPartitionHandler`), con 4 particiones por defecto (`app.estado-anual.grid-size`), cada una con su propio `FlatFileItemReader` (`@StepScope`) operando sobre un rango exclusivo de filas — sin necesidad de sincronización entre particiones, a diferencia del enfoque de Job 1/2.
+## Seguridad implementada
 
-## 4. Decisiones de diseño transversales
+- **HTTPS** habilitado en los 3 BFF mediante certificado autofirmado (`keystore.p12`, formato PKCS12).
+- **Autenticación diferenciada por canal**, según se detalla arriba.
+- Cada canal valida sus credenciales mediante un `HandlerInterceptor` propio, sin lógica compartida entre BFF.
 
-- **Anomalías se marcan y conservan, nunca se descartan silenciosamente** (auditoría bancaria: nunca perder el rastro de un dato sospechoso).
-- **Errores técnicos de formato** se manejan con `SkipPolicy`/`SkipListener` (Jobs 1 y 2); en Job 3 se decidió que el Reader nunca falle (todo se lee como `String`) y sea el Processor quien decida si algo es anomalía, dado el volumen y variedad de errores del dataset de esa semana.
-- **Contadores del Processor** usan `AtomicInteger` y `ConcurrentHashMap.newKeySet()` para seguridad en concurrencia.
-- **Lanzamiento de Jobs** vía `CommandLineRunner` manual con parámetro `timestamp` único por ejecución (evita un bug conocido de Spring Boot con `RunIdIncrementer` cuando ya existe una ejecución previa con parámetros vacíos).
-- **Retry:** `TransientDataAccessException`, límite de 2 reintentos, pensado para fallos pasajeros de conexión a MySQL.
+## Requisitos previos
 
-## 5. Requisitos para ejecutar
+- Java 17
+- Maven 3.9+
+- MySQL 8 con la base `banco_xyz_batch` ya poblada (ejecutar previamente los Jobs de `batch-core`)
+- Variables de entorno configuradas: `DB_USERNAME`, `DB_PASSWORD`
 
-- Java 17+
-- Apache Maven 3.9+
-- MySQL 8.0 (local o remoto)
+## Instrucciones de ejecución
 
-### 5.1 Base de datos
+### 1. Compilar el proyecto completo
 
-Crear el schema y las tablas necesarias:
+mvn clean install
 
-```sql
-CREATE DATABASE banco_xyz_batch CHARACTER SET utf8mb4;
 
-USE banco_xyz_batch;
+### 2. Levantar cada BFF (en terminales separadas)
 
-CREATE TABLE transacciones (
-    id BIGINT PRIMARY KEY,
-    fecha DATE,
-    monto DECIMAL(15,2),
-    tipo VARCHAR(20),
-    es_anomalia BOOLEAN,
-    motivo_anomalia VARCHAR(255)
-);
+cd bff-web
+mvn spring-boot:run
 
-CREATE TABLE cuentas_intereses (
-    cuenta_id BIGINT PRIMARY KEY,
-    nombre VARCHAR(100),
-    saldo_original DECIMAL(15,2),
-    saldo_final DECIMAL(15,2),
-    edad INT,
-    tipo VARCHAR(20),
-    es_anomalia BOOLEAN,
-    motivo_anomalia VARCHAR(255)
-);
+cd bff-movil
+mvn spring-boot:run
 
-CREATE TABLE transacciones_anuales_detalle (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    cuenta_id BIGINT,
-    fecha DATE NULL,
-    transaccion VARCHAR(20),
-    monto DECIMAL(15,2) NULL,
-    descripcion VARCHAR(255),
-    es_anomalia BOOLEAN,
-    motivo_anomalia VARCHAR(255)
-);
+cd bff-cajero
+mvn spring-boot:run
 
-CREATE TABLE estados_cuenta_anuales (
-    cuenta_id BIGINT PRIMARY KEY,
-    total_depositos DECIMAL(15,2),
-    total_retiros_compras_pagos DECIMAL(15,2),
-    saldo_neto_anual DECIMAL(15,2),
-    cantidad_transacciones INT,
-    cantidad_anomalias INT
-);
-```
 
-### 5.2 Configuración de conexión
+### 3. Probar los endpoints
 
-Ajustar `src/main/resources/application.properties` con las credenciales locales de MySQL (usuario, contraseña, puerto).
+**BFF Web (Basic Auth):**
 
-### 5.3 Ejecutar
+curl -Credential (usuario: admin.web / clave: WebXYZ2026!) https://localhost:8081/api/web/transacciones
 
-```
-mvn clean compile spring-boot:run
-```
 
-Los 3 Jobs se ejecutan automáticamente al arrancar la aplicación, en este orden: Job 3 (Estados de Cuenta Anuales), Job 1 (Transacciones Diarias), Job 2 (Intereses Mensuales). Cada uno imprime en consola un resumen final (total procesadas, válidas, anomalías).
+**BFF Movil (JWT):**
 
-**Importante:** antes de cada nueva ejecución de prueba, vaciar las tablas para evitar errores de llave duplicada:
+POST https://localhost:8082/api/movil/auth/login
+Body: {"usuario":"app.movil","clave":"MovilXYZ2026!"}
 
-```sql
-TRUNCATE TABLE transacciones;
-TRUNCATE TABLE cuentas_intereses;
-TRUNCATE TABLE transacciones_anuales_detalle;
-TRUNCATE TABLE estados_cuenta_anuales;
-```
+GET https://localhost:8082/api/movil/transacciones
+Header: Authorization: Bearer <token obtenido>
 
-## 6. Evidencia de ejecución
 
-Ver carpeta `/evidencias` en este repositorio: capturas de consola mostrando la ejecución exitosa de los 3 Jobs y consultas SQL verificando los resultados en cada tabla.
+**BFF Cajero (token fijo):**
 
-## 7. Autor
+GET https://localhost:8083/api/cajero/saldo/101
+Header: X-Cajero-Token: CAJERO-XYZ-2026-SECRETO
 
-Proyecto desarrollado individualmente para DUOC UC — Analista Programador, Backend III (PBY2203), profesor Gabriel Grobier.
+
+Nota: al usar un certificado autofirmado, los clientes HTTP deben configurarse para aceptar certificados no verificados en el entorno de desarrollo (no aplica en producción).
+
+## Evidencias
+
+Las capturas de ejecución de cada API, incluyendo los casos de éxito (200 OK) y de rechazo por falta de autenticación (401), se encuentran en la carpeta `evidencias/`.
