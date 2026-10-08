@@ -19,6 +19,7 @@
         <module>bff-cajero</module>
         <module>eureka-server</module>
         <module>config-server</module>
+        <module>ms-transacciones</module>
     </modules>
 
 </project>

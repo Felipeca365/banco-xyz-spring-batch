@@ -13,3 +13,11 @@ spring:
 
 mensaje:
   origen: "Configuracion cargada desde Config Server"
+
+seguridad:
+  admin:
+    usuario: admin
+    clave-hash: "$2a$10$0kQ7JvBEqtembBnEmtqWAeRzgvJpZrkPqt9yfO3HqHtLW4a1A4s.C"
+  cliente:
+    usuario: cliente
+    clave-hash: "$2a$10$7IcdcAqmhvsofB.O6X5MEeitR9Fc.G9UbpjSFR93YbkgbhxULnizK"

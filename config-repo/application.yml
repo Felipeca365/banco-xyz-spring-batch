@@ -3,6 +3,9 @@ eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
+  instance:
+    hostname: localhost        # Registrarse como "localhost" y no con el nombre del equipo
+    instance-id: localhost:${spring.application.name}:${server.port}
 
 banco:
   nombre: "Banco XYZ"
