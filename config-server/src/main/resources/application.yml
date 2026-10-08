@@ -1,0 +1,13 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native          # "native" = leer los .yml desde una carpeta local
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:../config-repo   # carpeta hermana de config-server
