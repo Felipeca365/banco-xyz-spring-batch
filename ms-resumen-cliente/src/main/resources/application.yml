@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: ms-resumen-cliente
+  config:
+    import: "configserver:http://localhost:8888"

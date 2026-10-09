@@ -1,0 +1,33 @@
+server:
+  port: 8094
+
+# Credenciales para llamar a ms-transacciones (rol USER es suficiente)
+transacciones:
+  usuario: cliente
+  clave: ${TRANSACCIONES_CLAVE}
+
+# Configuracion del Circuit Breaker llamado "transacciones"
+resilience4j:
+  circuitbreaker:
+    instances:
+      transacciones:
+        sliding-window-size: 5                    # evalua las ultimas 5 llamadas
+        minimum-number-of-calls: 3                # necesita al menos 3 para decidir
+        failure-rate-threshold: 50                # si falla el 50% o mas -> OPEN
+        wait-duration-in-open-state: 15s          # espera 15s antes de probar de nuevo
+        permitted-number-of-calls-in-half-open-state: 2   # 2 llamadas de prueba
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true           # muestra su estado en /actuator/health
+
+# Actuator: endpoints para OBSERVAR el estado del Circuit Breaker
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true

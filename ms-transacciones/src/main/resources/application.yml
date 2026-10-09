@@ -3,3 +3,4 @@ spring:
     name: ms-transacciones        # Con ESTE nombre busca su archivo en config-repo
   config:
     import: "configserver:http://localhost:8888"
+
